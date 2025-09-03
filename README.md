@@ -1,0 +1,2 @@
+# zaiGoFramework
+go言語で記述された在庫管理用フレームワーク
