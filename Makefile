@@ -59,7 +59,7 @@ clean:
 # Dockerイメージをビルド
 docker-build:
 	@echo "Dockerイメージをビルドしています..."
-	docker build -t $(DOCKER_IMAGE) -f deployments/docker/Dockerfile .
+	docker build -t $(DOCKER_IMAGE) -f Dockerfile .
 
 # Docker Composeで全体を起動
 docker-up:

@@ -21,7 +21,7 @@ services:
   inventory-api:
     build:
       context: .
-      dockerfile: deployments/docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: zai-inventory-api
     environment:
       DB_HOST: postgres
