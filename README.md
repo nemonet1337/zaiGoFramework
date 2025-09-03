@@ -43,11 +43,6 @@ zaiGoFrameworkは、現代的なビジネス要件を満たしながらも、シ
 
 ## クイックスタート
 
-### 前提条件
-- Go 1.21以上
-- PostgreSQL 15以上
-- Docker（オプション）
-
 ### インストール
 
 ```bash
@@ -100,7 +95,6 @@ zaiGoFramework/
 ├── pkg/inventory/           # コアライブラリ
 ├── internal/config/         # 設定管理
 ├── migrations/             # DBスキーマ
-├── deployments/docker/     # Docker設定
 ├── examples/               # 使用例
 │   ├── basic_usage/        # プログラム例
 │   └── api_client/         # REST API例
