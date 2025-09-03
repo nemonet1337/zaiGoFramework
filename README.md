@@ -96,23 +96,15 @@ func main() {
 
 ```
 zaiGoFramework/
-├── cmd/
-│   ├── api/           # REST APIサーバー
-│   └── cli/           # コマンドラインツール
-├── pkg/
-│   ├── inventory/     # コア在庫管理ライブラリ
-│   ├── metrics/       # メトリクス・監視
-│   └── logging/       # ログ機能
-├── internal/
-│   ├── config/        # 設定管理
-│   └── middleware/    # HTTPミドルウェア
-├── migrations/        # データベースマイグレーション
-├── deployments/
-│   ├── docker/        # Docker設定
-│   └── k8s/          # Kubernetes設定
-├── docs/             # ドキュメント
-├── examples/         # 使用例
-└── tests/            # 統合テスト
+├── cmd/api/                 # APIサーバー
+├── pkg/inventory/           # コアライブラリ
+├── internal/config/         # 設定管理
+├── migrations/             # DBスキーマ
+├── deployments/docker/     # Docker設定
+├── examples/               # 使用例
+│   ├── basic_usage/        # プログラム例
+│   └── api_client/         # REST API例
+└── tests/                  # テストファイル
 ```
 
 ## API仕様
@@ -122,7 +114,8 @@ zaiGoFramework/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/inventory/{itemId}/{locationId}` | 在庫情報取得 |
-| GET | `/api/v1/inventory/{itemId}/total` | 総在庫取得 |
+| GET | `GET /api/v1/inventory/{itemID}/history` | 履歴確認 |
+| GET | `GET /api/v1/alerts` | アラート確認 |
 | POST | `/api/v1/inventory/add` | 在庫追加 |
 | POST | `/api/v1/inventory/remove` | 在庫減算 |
 | POST | `/api/v1/inventory/transfer` | 在庫移動 |

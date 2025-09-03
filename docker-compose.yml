@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # PostgreSQLデータベース
+  postgres:
+    image: postgres:15-alpine
+    container_name: zai-postgres
+    environment:
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: inventory_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - zai-network
+
+  # 在庫管理API
+  inventory-api:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile
+    container_name: zai-inventory-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: inventory
+      DB_PASSWORD: password
+      DB_NAME: inventory_db
+      API_PORT: 8080
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - zai-network
+    volumes:
+      - ./logs:/app/logs
+
+
+volumes:
+  postgres_data:
+
+networks:
+  zai-network:
+    driver: bridge
