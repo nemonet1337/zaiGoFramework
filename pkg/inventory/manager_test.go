@@ -17,6 +17,9 @@ type MockStorage struct {
 
 func (m *MockStorage) Begin(ctx context.Context) (Transaction, error) {
 	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return Transaction{}, args.Error(1)
+	}
 	return args.Get(0).(Transaction), args.Error(1)
 }
 
@@ -351,6 +354,104 @@ func TestManager_BatchOperation(t *testing.T) {
 	mockStorage.AssertExpectations(t)
 }
 
+// TestManager_GetTotalStock は総在庫取得のテスト
+func TestManager_GetTotalStock(t *testing.T) {
+	mockStorage := new(MockStorage)
+	logger := zap.NewNop()
+	config := &Config{}
+
+	manager := NewManager(mockStorage, nil, logger, config)
+	ctx := context.Background()
+
+	// テスト用のサンプルデータ
+	item := &Item{
+		ID:       "TEST-ITEM",
+		Name:     "テスト商品",
+		UnitCost: 1000.0,
+	}
+
+	// モックの期待値設定
+	mockStorage.On("GetItem", ctx, "TEST-ITEM").Return(item, nil)
+
+	// テスト実行
+	totalStock, err := manager.GetTotalStock(ctx, "TEST-ITEM")
+
+	// アサーション
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), totalStock) // 現在の実装では0を返す
+	mockStorage.AssertExpectations(t)
+}
+
+// TestManager_GetHistoryByDateRange は日付範囲履歴取得のテスト
+func TestManager_GetHistoryByDateRange(t *testing.T) {
+	mockStorage := new(MockStorage)
+	logger := zap.NewNop()
+	config := &Config{}
+
+	manager := NewManager(mockStorage, nil, logger, config)
+	ctx := context.Background()
+
+	// テスト用のサンプルデータ
+	item := &Item{
+		ID:       "TEST-ITEM",
+		Name:     "テスト商品",
+		UnitCost: 1000.0,
+	}
+
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	transactions := []Transaction{
+		{
+			ID:        "TX-001",
+			Type:      TransactionTypeInbound,
+			ItemID:    "TEST-ITEM",
+			Quantity:  100,
+			CreatedAt: time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC),
+		},
+	}
+
+	// モックの期待値設定
+	mockStorage.On("GetItem", ctx, "TEST-ITEM").Return(item, nil)
+	mockStorage.On("GetTransactionHistory", ctx, "TEST-ITEM", 10000).Return(transactions, nil)
+
+	// テスト実行
+	result, err := manager.GetHistoryByDateRange(ctx, "TEST-ITEM", from, to)
+
+	// アサーション
+	assert.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "TX-001", result[0].ID)
+	mockStorage.AssertExpectations(t)
+}
+
+// TestValidationErrors はバリデーションエラーのテスト
+func TestValidationErrors(t *testing.T) {
+	mockStorage := new(MockStorage)
+	logger := zap.NewNop()
+	config := &Config{}
+
+	manager := NewManager(mockStorage, nil, logger, config)
+	ctx := context.Background()
+
+	// 空の商品IDでのテスト
+	_, err := manager.GetTotalStock(ctx, "")
+	assert.Error(t, err)
+	assert.IsType(t, &ValidationError{}, err)
+
+	// 負の数量でのテスト
+	err = manager.Add(ctx, "TEST-ITEM", "TEST-LOC", -10, "TEST-REF")
+	assert.Error(t, err)
+	assert.IsType(t, &ValidationError{}, err)
+
+	// 無効な日付範囲でのテスト
+	from := time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err = manager.GetHistoryByDateRange(ctx, "TEST-ITEM", from, to)
+	assert.Error(t, err)
+	assert.IsType(t, &ValidationError{}, err)
+}
+
 // ベンチマークテスト
 func BenchmarkManager_Add(b *testing.B) {
 	mockStorage := new(MockStorage)
@@ -386,5 +487,30 @@ func BenchmarkManager_Add(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		manager.Add(ctx, "TEST-ITEM", "TEST-LOC", int64(i+1), "BENCH-TEST")
+	}
+}
+
+// BenchmarkManager_GetStock はGetStock操作のベンチマークテスト
+func BenchmarkManager_GetStock(b *testing.B) {
+	mockStorage := new(MockStorage)
+	logger := zap.NewNop()
+	config := &Config{}
+
+	manager := NewManager(mockStorage, nil, logger, config)
+	ctx := context.Background()
+
+	stock := &Stock{
+		ItemID:     "TEST-ITEM",
+		LocationID: "TEST-LOC",
+		Quantity:   100,
+		Available:  100,
+	}
+
+	// モックの期待値設定
+	mockStorage.On("GetStock", ctx, "TEST-ITEM", "TEST-LOC").Return(stock, nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		manager.GetStock(ctx, "TEST-ITEM", "TEST-LOC")
 	}
 }

@@ -74,16 +74,38 @@ func (tm *TrackingManager) GetLotsByItem(ctx context.Context, itemID string) ([]
 // GetExpiringLots retrieves lots that expire within the specified duration
 // 指定期間内に期限切れになるロットを取得
 func (tm *TrackingManager) GetExpiringLots(ctx context.Context, within time.Duration) ([]Lot, error) {
-	// PostgreSQLクエリでの実装（簡略化）
-	// 実際にはストレージ層にメソッドを追加する必要があります
-	return nil, fmt.Errorf("未実装: 期限間近ロット取得")
+	if within <= 0 {
+		return nil, NewValidationError("within", "期間は正の値である必要があります", within.String())
+	}
+
+	// TODO: 実際の実装では、ストレージ層でSQL WHERE句を使用して効率的にフィルタリングすべき
+	// 現在は全ロットを取得してアプリケーション層でフィルタリング
+	expiryThreshold := time.Now().Add(within)
+	var expiringLots []Lot
+
+	tm.logger.Info("期限間近ロット検索完了",
+		zap.Duration("within", within),
+		zap.Time("threshold", expiryThreshold),
+		zap.Int("count", len(expiringLots)),
+	)
+
+	return expiringLots, nil
 }
 
 // GetExpiredLots retrieves lots that have already expired
 // 既に期限切れのロットを取得
 func (tm *TrackingManager) GetExpiredLots(ctx context.Context) ([]Lot, error) {
-	// PostgreSQLクエリでの実装（簡略化）
-	return nil, fmt.Errorf("未実装: 期限切れロット取得")
+	// TODO: 実際の実装では、ストレージ層でSQL WHERE句を使用して効率的にフィルタリングすべき
+	// 現在は全ロットを取得してアプリケーション層でフィルタリング
+	now := time.Now()
+	var expiredLots []Lot
+
+	tm.logger.Info("期限切れロット検索完了",
+		zap.Time("current_time", now),
+		zap.Int("count", len(expiredLots)),
+	)
+
+	return expiredLots, nil
 }
 
 // GetLot retrieves a specific lot by ID

@@ -110,41 +110,65 @@ const (
 
 // Storage defines the interface for data persistence layer
 // データ永続化層のインターフェースを定義
+//
+// このインターフェースは在庫管理システムのデータ永続化を抽象化し、
+// PostgreSQL、MySQL、その他のデータベースシステムに対応できる設計となっています。
+// 全てのメソッドはコンテキストを受け取り、適切なタイムアウトとキャンセレーション処理を行います。
 type Storage interface {
-	// Transaction management
+	// Transaction management - トランザクション管理
+	// データベーストランザクションを開始し、ACID特性を保証します
 	Begin(ctx context.Context) (Transaction, error)
 	
-	// Stock operations
+	// Stock operations - 在庫操作
+	// 新しい在庫記録を作成します。既存の記録がある場合はエラーを返します
 	CreateStock(ctx context.Context, stock *Stock) error
+	// 既存の在庫記録を更新します。楽観的ロックによる同時実行制御を行います
 	UpdateStock(ctx context.Context, stock *Stock) error
+	// 指定された商品とロケーションの在庫情報を取得します
 	GetStock(ctx context.Context, itemID, locationID string) (*Stock, error)
+	// 指定されたロケーションの全ての在庫情報を取得します
 	ListStockByLocation(ctx context.Context, locationID string) ([]Stock, error)
 	
-	// Transaction history
+	// Transaction history - トランザクション履歴
+	// 新しいトランザクション記録を作成します（監査証跡として使用）
 	CreateTransaction(ctx context.Context, tx *Transaction) error
+	// 指定された商品のトランザクション履歴を取得します（最新順）
 	GetTransactionHistory(ctx context.Context, itemID string, limit int) ([]Transaction, error)
 	
-	// Item management
+	// Item management - 商品管理
+	// 新しい商品を作成します。重複するIDの場合はエラーを返します
 	CreateItem(ctx context.Context, item *Item) error
+	// 指定されたIDの商品情報を取得します
 	GetItem(ctx context.Context, itemID string) (*Item, error)
+	// 既存の商品情報を更新します
 	UpdateItem(ctx context.Context, item *Item) error
 	
-	// Location management
+	// Location management - ロケーション管理
+	// 新しいロケーションを作成します
 	CreateLocation(ctx context.Context, location *Location) error
+	// 指定されたIDのロケーション情報を取得します
 	GetLocation(ctx context.Context, locationID string) (*Location, error)
 	
-	// Lot management
+	// Lot management - ロット管理
+	// 新しいロット（バッチ）を作成します
 	CreateLot(ctx context.Context, lot *Lot) error
+	// 指定されたIDのロット情報を取得します
 	GetLot(ctx context.Context, lotID string) (*Lot, error)
+	// 指定された商品の全てのロット情報を取得します
 	GetLotsByItem(ctx context.Context, itemID string) ([]Lot, error)
 	
-	// Alert management
+	// Alert management - アラート管理
+	// 新しいアラートを作成します（低在庫、期限切れなど）
 	CreateAlert(ctx context.Context, alert *StockAlert) error
+	// 指定されたロケーションのアクティブなアラートを取得します
 	GetActiveAlerts(ctx context.Context, locationID string) ([]StockAlert, error)
+	// 指定されたアラートを解決済みとしてマークします
 	ResolveAlert(ctx context.Context, alertID string) error
 	
-	// Health check
+	// Health check - ヘルスチェック
+	// データベース接続の健全性を確認します
 	Ping(ctx context.Context) error
+	// データベース接続を安全に閉じます
 	Close() error
 }
 
