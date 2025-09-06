@@ -49,10 +49,12 @@ func NewPostgreSQLStorage(dsn string, logger *zap.Logger) (*PostgreSQLStorage, e
 
 // Begin starts a new database transaction
 // 新しいデータベーストランザクションを開始
-func (s *PostgreSQLStorage) Begin(ctx context.Context) (inventory.Transaction, error) {
-	// 注意: ここでのTransactionはDBトランザクション、inventory.Transactionは在庫移動記録
-	// 実装の簡略化のため、この機能は後で実装
-	return nil, fmt.Errorf("未実装")
+func (s *PostgreSQLStorage) Begin(ctx context.Context) (*sql.Tx, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("トランザクション開始に失敗しました: %w", err)
+	}
+	return tx, nil
 }
 
 // CreateStock creates a new stock record
@@ -485,6 +487,103 @@ func (s *PostgreSQLStorage) UpdateItem(ctx context.Context, item *inventory.Item
 	return nil
 }
 
+// DeleteItem deletes an item by ID
+// IDで商品を削除
+func (s *PostgreSQLStorage) DeleteItem(ctx context.Context, itemID string) error {
+	query := `DELETE FROM items WHERE id = $1`
+
+	result, err := s.db.ExecContext(ctx, query, itemID)
+	if err != nil {
+		return fmt.Errorf("商品削除に失敗しました: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("削除行数の取得に失敗しました: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return inventory.ErrItemNotFound
+	}
+
+	return nil
+}
+
+// ListItems retrieves items with pagination
+// ページネーション付きで商品一覧を取得
+func (s *PostgreSQLStorage) ListItems(ctx context.Context, offset, limit int) ([]inventory.Item, error) {
+	query := `
+		SELECT id, name, sku, description, category, unit_cost, created_at, updated_at
+		FROM items 
+		ORDER BY created_at DESC
+		OFFSET $1 LIMIT $2`
+
+	rows, err := s.db.QueryContext(ctx, query, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("商品一覧取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var items []inventory.Item
+	for rows.Next() {
+		var item inventory.Item
+		err := rows.Scan(
+			&item.ID,
+			&item.Name,
+			&item.SKU,
+			&item.Description,
+			&item.Category,
+			&item.UnitCost,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("商品スキャンに失敗しました: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+// SearchItems searches for items by query string
+// クエリ文字列で商品を検索
+func (s *PostgreSQLStorage) SearchItems(ctx context.Context, query string) ([]inventory.Item, error) {
+	sqlQuery := `
+		SELECT id, name, sku, description, category, unit_cost, created_at, updated_at
+		FROM items 
+		WHERE name ILIKE $1 OR sku ILIKE $1 OR description ILIKE $1 OR category ILIKE $1
+		ORDER BY name`
+
+	searchPattern := "%" + query + "%"
+	rows, err := s.db.QueryContext(ctx, sqlQuery, searchPattern)
+	if err != nil {
+		return nil, fmt.Errorf("商品検索に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var items []inventory.Item
+	for rows.Next() {
+		var item inventory.Item
+		err := rows.Scan(
+			&item.ID,
+			&item.Name,
+			&item.SKU,
+			&item.Description,
+			&item.Category,
+			&item.UnitCost,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("商品スキャンに失敗しました: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
 // CreateLocation creates a new location
 // 新しいロケーションを作成
 func (s *PostgreSQLStorage) CreateLocation(ctx context.Context, location *inventory.Location) error {
@@ -541,6 +640,99 @@ func (s *PostgreSQLStorage) GetLocation(ctx context.Context, locationID string) 
 	}
 
 	return location, nil
+}
+
+// UpdateLocation updates an existing location
+// 既存のロケーションを更新
+func (s *PostgreSQLStorage) UpdateLocation(ctx context.Context, location *inventory.Location) error {
+	query := `
+		UPDATE locations 
+		SET name = $2, type = $3, address = $4, capacity = $5, is_active = $6, updated_at = $7
+		WHERE id = $1`
+
+	result, err := s.db.ExecContext(ctx, query,
+		location.ID,
+		location.Name,
+		location.Type,
+		location.Address,
+		location.Capacity,
+		location.IsActive,
+		location.UpdatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("ロケーション更新に失敗しました: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("更新行数の取得に失敗しました: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return inventory.ErrLocationNotFound
+	}
+
+	return nil
+}
+
+// DeleteLocation deletes a location by ID
+// IDでロケーションを削除
+func (s *PostgreSQLStorage) DeleteLocation(ctx context.Context, locationID string) error {
+	query := `DELETE FROM locations WHERE id = $1`
+
+	result, err := s.db.ExecContext(ctx, query, locationID)
+	if err != nil {
+		return fmt.Errorf("ロケーション削除に失敗しました: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("削除行数の取得に失敗しました: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return inventory.ErrLocationNotFound
+	}
+
+	return nil
+}
+
+// ListLocations retrieves locations with pagination
+// ページネーション付きでロケーション一覧を取得
+func (s *PostgreSQLStorage) ListLocations(ctx context.Context, offset, limit int) ([]inventory.Location, error) {
+	query := `
+		SELECT id, name, type, address, capacity, is_active, created_at, updated_at
+		FROM locations 
+		ORDER BY created_at DESC
+		OFFSET $1 LIMIT $2`
+
+	rows, err := s.db.QueryContext(ctx, query, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ロケーション一覧取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var locations []inventory.Location
+	for rows.Next() {
+		var location inventory.Location
+		err := rows.Scan(
+			&location.ID,
+			&location.Name,
+			&location.Type,
+			&location.Address,
+			&location.Capacity,
+			&location.IsActive,
+			&location.CreatedAt,
+			&location.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ロケーションスキャンに失敗しました: %w", err)
+		}
+		locations = append(locations, location)
+	}
+
+	return locations, nil
 }
 
 // CreateLot creates a new lot record
@@ -608,6 +800,80 @@ func (s *PostgreSQLStorage) GetLotsByItem(ctx context.Context, itemID string) ([
 	rows, err := s.db.QueryContext(ctx, query, itemID)
 	if err != nil {
 		return nil, fmt.Errorf("商品ロット取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var lots []inventory.Lot
+	for rows.Next() {
+		var lot inventory.Lot
+		err := rows.Scan(
+			&lot.ID,
+			&lot.Number,
+			&lot.ItemID,
+			&lot.Quantity,
+			&lot.UnitCost,
+			&lot.ExpiryDate,
+			&lot.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ロットスキャンに失敗しました: %w", err)
+		}
+		lots = append(lots, lot)
+	}
+
+	return lots, nil
+}
+
+// GetExpiringLots retrieves lots that are expiring within the specified duration
+// 指定期間内に期限切れになるロットを取得
+func (s *PostgreSQLStorage) GetExpiringLots(ctx context.Context, within time.Duration) ([]inventory.Lot, error) {
+	expiryThreshold := time.Now().Add(within)
+	query := `
+		SELECT id, number, item_id, quantity, unit_cost, expiry_date, created_at
+		FROM lots 
+		WHERE expiry_date IS NOT NULL AND expiry_date <= $1
+		ORDER BY expiry_date ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, expiryThreshold)
+	if err != nil {
+		return nil, fmt.Errorf("期限切れ間近ロット取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var lots []inventory.Lot
+	for rows.Next() {
+		var lot inventory.Lot
+		err := rows.Scan(
+			&lot.ID,
+			&lot.Number,
+			&lot.ItemID,
+			&lot.Quantity,
+			&lot.UnitCost,
+			&lot.ExpiryDate,
+			&lot.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ロットスキャンに失敗しました: %w", err)
+		}
+		lots = append(lots, lot)
+	}
+
+	return lots, nil
+}
+
+// GetExpiredLots retrieves lots that have already expired
+// 既に期限切れになったロットを取得
+func (s *PostgreSQLStorage) GetExpiredLots(ctx context.Context) ([]inventory.Lot, error) {
+	now := time.Now()
+	query := `
+		SELECT id, number, item_id, quantity, unit_cost, expiry_date, created_at
+		FROM lots 
+		WHERE expiry_date IS NOT NULL AND expiry_date < $1
+		ORDER BY expiry_date ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, now)
+	if err != nil {
+		return nil, fmt.Errorf("期限切れロット取得に失敗しました: %w", err)
 	}
 	defer rows.Close()
 

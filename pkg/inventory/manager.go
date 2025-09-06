@@ -17,6 +17,14 @@ type Manager struct {
 	config    *Config         // 設定
 }
 
+// すべてのインターフェースを実装することを明示
+var (
+	_ InventoryManager = (*Manager)(nil)
+	_ ItemManager     = (*Manager)(nil)
+	_ LocationManager = (*Manager)(nil)
+	_ LotManager      = (*Manager)(nil)
+)
+
 // Config holds configuration for the inventory manager
 // 在庫マネージャーの設定を保持
 type Config struct {

@@ -2,105 +2,218 @@ package config
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
-// Config holds application configuration
-// アプリケーション設定を保持
+// Config システム全体の設定構造体
 type Config struct {
 	Database  DatabaseConfig  `yaml:"database"`
 	API       APIConfig       `yaml:"api"`
 	Inventory InventoryConfig `yaml:"inventory"`
-	Logging   LoggingConfig   `yaml:"logging"`
+	Log       LogConfig       `yaml:"log"`
 }
 
-// DatabaseConfig holds database configuration
-// データベース設定を保持
+// DatabaseConfig データベース接続設定
 type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
-	SSLMode  string `yaml:"sslmode"`
+	Host     string `yaml:"host" env:"DB_HOST"`
+	Port     int    `yaml:"port" env:"DB_PORT"`
+	User     string `yaml:"user" env:"DB_USER"`
+	Password string `yaml:"password" env:"DB_PASSWORD"`
+	DBName   string `yaml:"dbname" env:"DB_NAME"`
 }
 
-// APIConfig holds API server configuration
-// APIサーバー設定を保持
+// APIConfig API サーバー設定
 type APIConfig struct {
-	Port           int           `yaml:"port"`
-	ReadTimeout    time.Duration `yaml:"read_timeout"`
-	WriteTimeout   time.Duration `yaml:"write_timeout"`
-	IdleTimeout    time.Duration `yaml:"idle_timeout"`
-	EnableCORS     bool          `yaml:"enable_cors"`
-	EnableMetrics  bool          `yaml:"enable_metrics"`
+	Port            int           `yaml:"port" env:"API_PORT"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout"`
+	EnableCORS      bool          `yaml:"enable_cors"`
+	EnableAuth      bool          `yaml:"enable_auth"`
 }
 
-// InventoryConfig holds inventory-specific configuration
-// 在庫固有の設定を保持
+// InventoryConfig 在庫管理設定
 type InventoryConfig struct {
-	AllowNegativeStock   bool  `yaml:"allow_negative_stock"`
-	DefaultLocation      string `yaml:"default_location"`
-	AuditEnabled         bool  `yaml:"audit_enabled"`
-	LowStockThreshold    int64 `yaml:"low_stock_threshold"`
-	AlertTimeoutHours    int   `yaml:"alert_timeout_hours"`
+	AllowNegativeStock  bool   `yaml:"allow_negative_stock"`
+	DefaultLocation     string `yaml:"default_location"`
+	AuditEnabled        bool   `yaml:"audit_enabled"`
+	LowStockThreshold   int64  `yaml:"low_stock_threshold"`
+	AlertTimeoutHours   int    `yaml:"alert_timeout_hours"`
 }
 
-// LoggingConfig holds logging configuration
-// ログ設定を保持
-type LoggingConfig struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"` // json, console
-	Output string `yaml:"output"` // stdout, file
+// LogConfig ログ設定
+type LogConfig struct {
+	Level      string `yaml:"level" env:"LOG_LEVEL"`
+	Format     string `yaml:"format"`
+	OutputPath string `yaml:"output_path"`
 }
 
-// Load loads configuration from environment variables
-// 環境変数から設定を読み込み
+// Load 設定をYAMLファイルと環境変数から読み込み
 func Load() (*Config, error) {
-	cfg := &Config{
+	config := &Config{
+		// デフォルト値設定
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnvAsInt("DB_PORT", 5432),
-			User:     getEnv("DB_USER", "inventory"),
-			Password: getEnv("DB_PASSWORD", "password"),
-			DBName:   getEnv("DB_NAME", "inventory_db"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+			Host:   "localhost",
+			Port:   5432,
+			User:   "postgres",
+			DBName: "inventory",
 		},
 		API: APIConfig{
-			Port:          getEnvAsInt("API_PORT", 8080),
-			ReadTimeout:   getEnvAsDuration("API_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout:  getEnvAsDuration("API_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:   getEnvAsDuration("API_IDLE_TIMEOUT", 60*time.Second),
-			EnableCORS:    getEnvAsBool("API_ENABLE_CORS", true),
-			EnableMetrics: getEnvAsBool("API_ENABLE_METRICS", true),
+			Port:         8080,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+			EnableCORS:   true,
+			EnableAuth:   false,
 		},
 		Inventory: InventoryConfig{
-			AllowNegativeStock: getEnvAsBool("INVENTORY_ALLOW_NEGATIVE_STOCK", false),
-			DefaultLocation:    getEnv("INVENTORY_DEFAULT_LOCATION", "DEFAULT"),
-			AuditEnabled:       getEnvAsBool("INVENTORY_AUDIT_ENABLED", true),
-			LowStockThreshold:  getEnvAsInt64("INVENTORY_LOW_STOCK_THRESHOLD", 10),
-			AlertTimeoutHours:  getEnvAsInt("INVENTORY_ALERT_TIMEOUT_HOURS", 24),
+			AllowNegativeStock: false,
+			DefaultLocation:    "DEFAULT",
+			AuditEnabled:       true,
+			LowStockThreshold:  10,
+			AlertTimeoutHours:  24,
 		},
-		Logging: LoggingConfig{
-			Level:  getEnv("LOG_LEVEL", "info"),
-			Format: getEnv("LOG_FORMAT", "json"),
-			Output: getEnv("LOG_OUTPUT", "stdout"),
+		Log: LogConfig{
+			Level:      "info",
+			Format:     "json",
+			OutputPath: "stdout",
 		},
+	}
+
+	// YAML設定ファイル読み込み
+	if err := loadFromYAML(config); err != nil {
+		return nil, fmt.Errorf("YAML設定読み込みエラー: %w", err)
+	}
+
+	// 環境変数でオーバーライド
+	if err := loadFromEnv(config); err != nil {
+		return nil, fmt.Errorf("環境変数読み込みエラー: %w", err)
 	}
 
 	// バリデーション
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("設定バリデーションに失敗しました: %w", err)
+	if err := config.validate(); err != nil {
+		return nil, fmt.Errorf("設定バリデーションエラー: %w", err)
 	}
 
-	return cfg, nil
+	return config, nil
 }
 
-// Validate validates the configuration
-// 設定をバリデーション
-func (c *Config) Validate() error {
+// loadFromYAML YAMLファイルから設定を読み込み
+func loadFromYAML(config *Config) error {
+	configPaths := []string{
+		"config/app.yaml",
+		"config.yaml",
+		"app.yaml",
+	}
+
+	var yamlFile []byte
+	var err error
+	
+	for _, path := range configPaths {
+		if yamlFile, err = ioutil.ReadFile(path); err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		// YAML設定ファイルが見つからない場合はスキップ（デフォルト値を使用）
+		return nil
+	}
+
+	return yaml.Unmarshal(yamlFile, config)
+}
+
+// loadFromEnv 環境変数から設定をオーバーライド
+func loadFromEnv(config *Config) error {
+	return loadEnvToStruct(config)
+}
+
+// loadEnvToStruct 構造体のenvタグに基づいて環境変数を読み込み
+func loadEnvToStruct(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("引数はstructのpointerである必要があります")
+	}
+
+	rv = rv.Elem()
+	rt := rv.Type()
+
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		fieldType := rt.Field(i)
+
+		// 埋め込み構造体の処理
+		if field.Kind() == reflect.Struct && fieldType.Anonymous == false {
+			if err := loadEnvToStruct(field.Addr().Interface()); err != nil {
+				return err
+			}
+			continue
+		}
+
+		envTag := fieldType.Tag.Get("env")
+		if envTag == "" {
+			continue
+		}
+
+		envValue := os.Getenv(envTag)
+		if envValue == "" {
+			continue
+		}
+
+		if err := setFieldValue(field, envValue); err != nil {
+			return fmt.Errorf("フィールド %s の設定に失敗: %w", fieldType.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// setFieldValue フィールドに環境変数の値を設定
+func setFieldValue(field reflect.Value, value string) error {
+	if !field.CanSet() {
+		return fmt.Errorf("フィールドに書き込みできません")
+	}
+
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if field.Type() == reflect.TypeOf(time.Duration(0)) {
+			duration, err := time.ParseDuration(value)
+			if err != nil {
+				return err
+			}
+			field.Set(reflect.ValueOf(duration))
+		} else {
+			intVal, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return err
+			}
+			field.SetInt(intVal)
+		}
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("サポートされていない型: %s", field.Kind())
+	}
+
+	return nil
+}
+
+// validate 設定をバリデーション
+func (c *Config) validate() error {
 	// データベース設定チェック
 	if c.Database.Host == "" {
 		return fmt.Errorf("データベースホストが指定されていません")
@@ -132,15 +245,15 @@ func (c *Config) Validate() error {
 	validLogLevels := map[string]bool{
 		"debug": true, "info": true, "warn": true, "error": true, "fatal": true,
 	}
-	if !validLogLevels[c.Logging.Level] {
-		return fmt.Errorf("無効なログレベル: %s", c.Logging.Level)
+	if !validLogLevels[c.Log.Level] {
+		return fmt.Errorf("無効なログレベル: %s", c.Log.Level)
 	}
 
 	validLogFormats := map[string]bool{
 		"json": true, "console": true,
 	}
-	if !validLogFormats[c.Logging.Format] {
-		return fmt.Errorf("無効なログフォーマット: %s", c.Logging.Format)
+	if !validLogFormats[c.Log.Format] {
+		return fmt.Errorf("無効なログフォーマット: %s", c.Log.Format)
 	}
 
 	return nil
@@ -149,13 +262,12 @@ func (c *Config) Validate() error {
 // DSN generates PostgreSQL Data Source Name
 // PostgreSQLデータソース名を生成
 func (c *Config) DSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		c.Database.Host,
 		c.Database.Port,
 		c.Database.User,
 		c.Database.Password,
 		c.Database.DBName,
-		c.Database.SSLMode,
 	)
 }
 

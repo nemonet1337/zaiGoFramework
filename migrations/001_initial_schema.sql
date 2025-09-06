@@ -2,102 +2,105 @@
 -- zaiGoFramework initial database schema
 
 -- 商品テーブル
-CREATE TABLE IF NOT EXISTS items (
+CREATE TABLE items (
     id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    sku VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(500) NOT NULL,
+    sku VARCHAR(255) UNIQUE,
     description TEXT,
-    category VARCHAR(100),
-    unit_cost DECIMAL(10,2) DEFAULT 0.00,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    category VARCHAR(255),
+    unit_cost DECIMAL(12,4) DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ロケーションテーブル  
-CREATE TABLE IF NOT EXISTS locations (
+-- ロケーションテーブル
+CREATE TABLE locations (
     id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(100) DEFAULT 'warehouse',
+    name VARCHAR(500) NOT NULL,
+    type VARCHAR(100),
     address TEXT,
     capacity BIGINT DEFAULT 0,
     is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- 在庫テーブル
-CREATE TABLE IF NOT EXISTS stocks (
+CREATE TABLE stocks (
     item_id VARCHAR(255) NOT NULL,
     location_id VARCHAR(255) NOT NULL,
-    quantity BIGINT DEFAULT 0,
-    reserved BIGINT DEFAULT 0,
-    available BIGINT DEFAULT 0,
-    version BIGINT DEFAULT 1,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_by VARCHAR(255) DEFAULT 'system',
+    quantity BIGINT NOT NULL DEFAULT 0,
+    reserved BIGINT NOT NULL DEFAULT 0,
+    available BIGINT NOT NULL DEFAULT 0,
+    version BIGINT NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_by VARCHAR(255) NOT NULL DEFAULT 'system',
     PRIMARY KEY (item_id, location_id),
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
     FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
 );
 
--- トランザクション履歴テーブル
-CREATE TABLE IF NOT EXISTS transactions (
+-- トランザクションテーブル
+CREATE TABLE transactions (
     id VARCHAR(255) PRIMARY KEY,
     type VARCHAR(50) NOT NULL,
     item_id VARCHAR(255) NOT NULL,
     from_location VARCHAR(255),
     to_location VARCHAR(255),
     quantity BIGINT NOT NULL,
-    unit_cost DECIMAL(10,2),
-    reference VARCHAR(255),
+    unit_cost DECIMAL(12,4),
+    reference VARCHAR(500),
     lot_number VARCHAR(255),
-    expiry_date TIMESTAMP WITH TIME ZONE,
+    expiry_date TIMESTAMP,
     metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    created_by VARCHAR(255) DEFAULT 'system',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_by VARCHAR(255) NOT NULL DEFAULT 'system',
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
     FOREIGN KEY (from_location) REFERENCES locations(id) ON DELETE SET NULL,
     FOREIGN KEY (to_location) REFERENCES locations(id) ON DELETE SET NULL
 );
 
--- ロット管理テーブル
-CREATE TABLE IF NOT EXISTS lots (
+-- ロットテーブル
+CREATE TABLE lots (
     id VARCHAR(255) PRIMARY KEY,
-    number VARCHAR(255) UNIQUE NOT NULL,
+    number VARCHAR(255) NOT NULL,
     item_id VARCHAR(255) NOT NULL,
     quantity BIGINT NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL,
-    expiry_date TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    unit_cost DECIMAL(12,4) NOT NULL,
+    expiry_date TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 );
 
--- 在庫アラートテーブル
-CREATE TABLE IF NOT EXISTS stock_alerts (
+-- アラートテーブル
+CREATE TABLE stock_alerts (
     id VARCHAR(255) PRIMARY KEY,
     type VARCHAR(50) NOT NULL,
     item_id VARCHAR(255) NOT NULL,
     location_id VARCHAR(255) NOT NULL,
     current_qty BIGINT NOT NULL,
     threshold BIGINT NOT NULL,
-    message TEXT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    resolved_at TIMESTAMP WITH TIME ZONE,
+    message TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMP,
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
     FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
 );
 
--- インデックス作成
-CREATE INDEX IF NOT EXISTS idx_stocks_item_id ON stocks(item_id);
-CREATE INDEX IF NOT EXISTS idx_stocks_location_id ON stocks(location_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_item_id ON transactions(item_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
-CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
-CREATE INDEX IF NOT EXISTS idx_lots_item_id ON lots(item_id);
-CREATE INDEX IF NOT EXISTS idx_lots_expiry_date ON lots(expiry_date);
-CREATE INDEX IF NOT EXISTS idx_stock_alerts_location_id ON stock_alerts(location_id);
-CREATE INDEX IF NOT EXISTS idx_stock_alerts_is_active ON stock_alerts(is_active);
+-- パフォーマンス向上のためのインデックス
+CREATE INDEX idx_items_sku ON items(sku);
+CREATE INDEX idx_items_category ON items(category);
+CREATE INDEX idx_stocks_item_id ON stocks(item_id);
+CREATE INDEX idx_stocks_location_id ON stocks(location_id);
+CREATE INDEX idx_stocks_quantity ON stocks(quantity);
+CREATE INDEX idx_transactions_item_id ON transactions(item_id);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
+CREATE INDEX idx_transactions_type ON transactions(type);
+CREATE INDEX idx_lots_item_id ON lots(item_id);
+CREATE INDEX idx_lots_expiry_date ON lots(expiry_date);
+CREATE INDEX idx_stock_alerts_location_id ON stock_alerts(location_id);
+CREATE INDEX idx_stock_alerts_is_active ON stock_alerts(is_active);
 
 -- 初期データ挿入
 
