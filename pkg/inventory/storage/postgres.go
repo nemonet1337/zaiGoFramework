@@ -186,6 +186,20 @@ func (s *PostgreSQLStorage) ListStockByLocation(ctx context.Context, locationID 
 	return stocks, nil
 }
 
+// GetTotalStockByItem retrieves total stock quantity for an item across all locations
+// 商品の全ロケーションでの合計在庫数を取得
+func (s *PostgreSQLStorage) GetTotalStockByItem(ctx context.Context, itemID string) (int64, error) {
+	query := `SELECT COALESCE(SUM(quantity), 0) FROM stocks WHERE item_id = $1`
+
+	var totalStock int64
+	err := s.db.QueryRowContext(ctx, query, itemID).Scan(&totalStock)
+	if err != nil {
+		return 0, fmt.Errorf("合計在庫数取得に失敗しました: %w", err)
+	}
+
+	return totalStock, nil
+}
+
 // CreateTransaction creates a new transaction record
 // 新しいトランザクション記録を作成
 func (s *PostgreSQLStorage) CreateTransaction(ctx context.Context, tx *inventory.Transaction) error {
@@ -234,6 +248,111 @@ func (s *PostgreSQLStorage) GetTransactionHistory(ctx context.Context, itemID st
 	rows, err := s.db.QueryContext(ctx, query, itemID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("トランザクション履歴取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var transactions []inventory.Transaction
+	for rows.Next() {
+		var tx inventory.Transaction
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&tx.ID,
+			&tx.Type,
+			&tx.ItemID,
+			&tx.FromLocation,
+			&tx.ToLocation,
+			&tx.Quantity,
+			&tx.UnitCost,
+			&tx.Reference,
+			&tx.LotNumber,
+			&tx.ExpiryDate,
+			&metadataJSON,
+			&tx.CreatedAt,
+			&tx.CreatedBy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("トランザクションスキャンに失敗しました: %w", err)
+		}
+
+		// メタデータのデシリアライズ
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &tx.Metadata); err != nil {
+				s.logger.Warn("メタデータのパースに失敗しました", zap.Error(err))
+			}
+		}
+
+		transactions = append(transactions, tx)
+	}
+
+	return transactions, nil
+}
+
+// GetTransactionHistoryByLocation retrieves transaction history for a location
+// ロケーションのトランザクション履歴を取得
+func (s *PostgreSQLStorage) GetTransactionHistoryByLocation(ctx context.Context, locationID string, limit int) ([]inventory.Transaction, error) {
+	query := `
+		SELECT id, type, item_id, from_location, to_location, quantity, unit_cost, reference, lot_number, expiry_date, metadata, created_at, created_by
+		FROM transactions 
+		WHERE from_location = $1 OR to_location = $1
+		ORDER BY created_at DESC
+		LIMIT $2`
+
+	rows, err := s.db.QueryContext(ctx, query, locationID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ロケーショントランザクション履歴取得に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var transactions []inventory.Transaction
+	for rows.Next() {
+		var tx inventory.Transaction
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&tx.ID,
+			&tx.Type,
+			&tx.ItemID,
+			&tx.FromLocation,
+			&tx.ToLocation,
+			&tx.Quantity,
+			&tx.UnitCost,
+			&tx.Reference,
+			&tx.LotNumber,
+			&tx.ExpiryDate,
+			&metadataJSON,
+			&tx.CreatedAt,
+			&tx.CreatedBy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("トランザクションスキャンに失敗しました: %w", err)
+		}
+
+		// メタデータのデシリアライズ
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &tx.Metadata); err != nil {
+				s.logger.Warn("メタデータのパースに失敗しました", zap.Error(err))
+			}
+		}
+
+		transactions = append(transactions, tx)
+	}
+
+	return transactions, nil
+}
+
+// GetTransactionHistoryByDateRange retrieves transaction history for an item within a date range
+// 商品の指定日付範囲のトランザクション履歴を取得
+func (s *PostgreSQLStorage) GetTransactionHistoryByDateRange(ctx context.Context, itemID string, from, to time.Time) ([]inventory.Transaction, error) {
+	query := `
+		SELECT id, type, item_id, from_location, to_location, quantity, unit_cost, reference, lot_number, expiry_date, metadata, created_at, created_by
+		FROM transactions 
+		WHERE item_id = $1 AND created_at >= $2 AND created_at <= $3
+		ORDER BY created_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, itemID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("日付範囲トランザクション履歴取得に失敗しました: %w", err)
 	}
 	defer rows.Close()
 

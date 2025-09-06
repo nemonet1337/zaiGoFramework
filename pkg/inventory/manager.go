@@ -414,10 +414,6 @@ func (m *Manager) GetStock(ctx context.Context, itemID, locationID string) (*Sto
 // GetTotalStock gets total stock across all locations for an item
 // 商品の全ロケーション合計在庫を取得
 func (m *Manager) GetTotalStock(ctx context.Context, itemID string) (int64, error) {
-	if itemID == "" {
-		return 0, NewValidationError("item_id", "商品IDが指定されていません", "")
-	}
-
 	// 商品の存在確認
 	if _, err := m.storage.GetItem(ctx, itemID); err != nil {
 		if err == ErrItemNotFound {
@@ -426,9 +422,11 @@ func (m *Manager) GetTotalStock(ctx context.Context, itemID string) (int64, erro
 		return 0, NewStorageError("get_item", "商品取得に失敗しました", err)
 	}
 
-	// TODO: 実際の実装では、ストレージ層でSUM集約クエリを実行すべき
-	// 現在は簡易実装として、全ロケーションの在庫を個別に取得して合計
-	totalStock := int64(0)
+	totalStock, err := m.storage.GetTotalStockByItem(ctx, itemID)
+	if err != nil {
+		m.logger.Error("合計在庫数取得に失敗しました", zap.String("item_id", itemID), zap.Error(err))
+		return 0, fmt.Errorf("合計在庫数取得に失敗しました: %w", err)
+	}
 
 	m.logger.Info("総在庫数取得完了",
 		zap.String("item_id", itemID),
@@ -469,9 +467,11 @@ func (m *Manager) GetHistoryByLocation(ctx context.Context, locationID string, l
 		return nil, NewStorageError("get_location", "ロケーション取得に失敗しました", err)
 	}
 
-	// TODO: ストレージ層にGetTransactionHistoryByLocationメソッドを追加する必要がある
-	// 現在は空のスライスを返す
-	transactions := make([]Transaction, 0)
+	transactions, err := m.storage.GetTransactionHistoryByLocation(ctx, locationID, limit)
+	if err != nil {
+		m.logger.Error("ロケーション履歴取得に失敗しました", zap.String("location_id", locationID), zap.Error(err))
+		return nil, fmt.Errorf("ロケーション履歴取得に失敗しました: %w", err)
+	}
 
 	m.logger.Info("ロケーション履歴取得完了",
 		zap.String("location_id", locationID),
@@ -501,27 +501,20 @@ func (m *Manager) GetHistoryByDateRange(ctx context.Context, itemID string, from
 		return nil, NewStorageError("get_item", "商品取得に失敗しました", err)
 	}
 
-	// 全履歴を取得してフィルタリング（実際の実装では、ストレージ層でクエリフィルタリングすべき）
-	allTransactions, err := m.storage.GetTransactionHistory(ctx, itemID, 10000)
+	transactions, err := m.storage.GetTransactionHistoryByDateRange(ctx, itemID, from, to)
 	if err != nil {
-		return nil, NewStorageError("get_transaction_history", "トランザクション履歴取得に失敗しました", err)
-	}
-
-	var filteredTransactions []Transaction
-	for _, tx := range allTransactions {
-		if (tx.CreatedAt.Equal(from) || tx.CreatedAt.After(from)) && (tx.CreatedAt.Equal(to) || tx.CreatedAt.Before(to)) {
-			filteredTransactions = append(filteredTransactions, tx)
-		}
+		m.logger.Error("日付範囲履歴取得に失敗しました", zap.String("item_id", itemID), zap.Error(err))
+		return nil, fmt.Errorf("日付範囲履歴取得に失敗しました: %w", err)
 	}
 
 	m.logger.Info("日付範囲履歴取得完了",
 		zap.String("item_id", itemID),
 		zap.String("from", from.Format("2006-01-02")),
 		zap.String("to", to.Format("2006-01-02")),
-		zap.Int("count", len(filteredTransactions)),
+		zap.Int("count", len(transactions)),
 	)
 
-	return filteredTransactions, nil
+	return transactions, nil
 }
 
 // ExecuteBatch executes a batch of inventory operations

@@ -128,12 +128,18 @@ type Storage interface {
 	GetStock(ctx context.Context, itemID, locationID string) (*Stock, error)
 	// 指定されたロケーションの全ての在庫情報を取得します
 	ListStockByLocation(ctx context.Context, locationID string) ([]Stock, error)
+	// 指定された商品の全ロケーションでの合計在庫数を取得します
+	GetTotalStockByItem(ctx context.Context, itemID string) (int64, error)
 	
 	// Transaction history - トランザクション履歴
 	// 新しいトランザクション記録を作成します（監査証跡として使用）
 	CreateTransaction(ctx context.Context, tx *Transaction) error
 	// 指定された商品のトランザクション履歴を取得します（最新順）
 	GetTransactionHistory(ctx context.Context, itemID string, limit int) ([]Transaction, error)
+	// 指定されたロケーションのトランザクション履歴を取得します（最新順）
+	GetTransactionHistoryByLocation(ctx context.Context, locationID string, limit int) ([]Transaction, error)
+	// 指定された商品の指定日付範囲のトランザクション履歴を取得します
+	GetTransactionHistoryByDateRange(ctx context.Context, itemID string, from, to time.Time) ([]Transaction, error)
 	
 	// Item management - 商品管理
 	// 新しい商品を作成します。重複するIDの場合はエラーを返します
