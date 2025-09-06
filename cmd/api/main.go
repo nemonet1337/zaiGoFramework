@@ -130,12 +130,47 @@ func setupRouter(handlers *Handlers) *mux.Router {
 
 	// 商品管理
 	api.HandleFunc("/items", handlers.CreateItem).Methods("POST")
+	api.HandleFunc("/items", handlers.ListItems).Methods("GET")
+	api.HandleFunc("/items/search", handlers.SearchItems).Methods("GET")
 	api.HandleFunc("/items/{itemId}", handlers.GetItem).Methods("GET")
 	api.HandleFunc("/items/{itemId}", handlers.UpdateItem).Methods("PUT")
+	api.HandleFunc("/items/{itemId}", handlers.DeleteItem).Methods("DELETE")
 
 	// ロケーション管理
 	api.HandleFunc("/locations", handlers.CreateLocation).Methods("POST")
+	api.HandleFunc("/locations", handlers.ListLocations).Methods("GET")
 	api.HandleFunc("/locations/{locationId}", handlers.GetLocation).Methods("GET")
+	api.HandleFunc("/locations/{locationId}", handlers.UpdateLocation).Methods("PUT")
+	api.HandleFunc("/locations/{locationId}", handlers.DeleteLocation).Methods("DELETE")
+
+	// ロット管理
+	api.HandleFunc("/lots", handlers.CreateLot).Methods("POST")
+	api.HandleFunc("/lots/{lotId}", handlers.GetLot).Methods("GET")
+	api.HandleFunc("/lots/item/{itemId}", handlers.GetLotsByItem).Methods("GET")
+	api.HandleFunc("/lots/expiring", handlers.GetExpiringLots).Methods("GET")
+	api.HandleFunc("/lots/expired", handlers.GetExpiredLots).Methods("GET")
+
+	// 予約管理
+	api.HandleFunc("/inventory/reserve", handlers.ReserveStock).Methods("POST")
+	api.HandleFunc("/inventory/release-reservation", handlers.ReleaseReservation).Methods("POST")
+
+	// 履歴管理（追加）
+	api.HandleFunc("/inventory/history/location/{locationId}", handlers.GetHistoryByLocation).Methods("GET")
+	api.HandleFunc("/inventory/{itemId}/history/date-range", handlers.GetHistoryByDateRange).Methods("GET")
+
+	// バッチ管理（追加）
+	api.HandleFunc("/inventory/batch/{batchId}/status", handlers.GetBatchStatus).Methods("GET")
+
+	// 在庫評価エンジン
+	api.HandleFunc("/valuation/{itemId}/{locationId}", handlers.CalculateValue).Methods("GET")
+	api.HandleFunc("/valuation/total/{locationId}", handlers.CalculateTotalValue).Methods("GET")
+	api.HandleFunc("/valuation/average-cost/{itemId}", handlers.GetAverageCost).Methods("GET")
+
+	// 在庫分析エンジン
+	api.HandleFunc("/analytics/abc/{locationId}", handlers.CalculateABCClassification).Methods("GET")
+	api.HandleFunc("/analytics/turnover/{itemId}", handlers.GetTurnoverRate).Methods("GET")
+	api.HandleFunc("/analytics/slow-moving/{locationId}", handlers.GetSlowMovingItems).Methods("GET")
+	api.HandleFunc("/analytics/report/{locationId}", handlers.GenerateStockReport).Methods("GET")
 
 	// CORS設定（開発用）
 	router.Use(func(next http.Handler) http.Handler {
